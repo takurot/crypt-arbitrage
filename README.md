@@ -11,6 +11,7 @@ This repository contains a Python script for simulating cryptocurrency arbitrage
 - **Trade simulation**: Simulates buy and sell trades between exchanges to evaluate potential profits.
 - **Portfolio rebalancing**: Maintains balanced BTC holdings across exchanges to optimize arbitrage opportunities.
 - **Customizable parameters**: Allows adjustment of fees, trade volume, and simulation settings.
+- **Robust error handling**: Skips unavailable exchange data without interrupting the simulation.
 
 ---
 
