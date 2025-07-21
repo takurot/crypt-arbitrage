@@ -1,4 +1,6 @@
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 # 各取引所のAPIエンドポイント
@@ -18,13 +20,26 @@ EXCHANGE_APIS = {
 }
 
 # スリッページと手数料のパラメータ
-SLIPPAGE_RATE = 0.001           # 0.1% 一般的な値
+BASE_SLIPPAGE_RATE = 0.001      # 0.1% 通常時のスリッページ
+SLIPPAGE_RATE = BASE_SLIPPAGE_RATE
 FEE_RATE = 0.002                # 0.2% 一般的な値
 TRANSFER_FEE_RATE = 0.001       # 0.1% 手数料でBTC移動
 DEFAULT_TRADE_VOLUME = 0.01     # [BTC]デフォルトの取引量
-MIN_PROFIT_AMOUNT = 10.0        # [$]最小利益額 ($50)
+BASE_MIN_PROFIT = 10.0          # [$]通常時の最小利益額
+MIN_PROFIT_AMOUNT = BASE_MIN_PROFIT
 INTERVAL = 7.0                  # [sec]取引間隔
 NUM_TRADE = 50                  # [回] シミュレーション上の取引回数
+
+# ボラティリティ計測用
+VOLATILITY_WINDOW = 5
+VOLATILITY_THRESHOLD_HIGH = 0.005  # 0.5%
+VOLATILITY_THRESHOLD_LOW = 0.002   # 0.2%
+SLIPPAGE_HIGH = 0.002
+SLIPPAGE_LOW = 0.001
+MIN_PROFIT_HIGH = 15.0
+MIN_PROFIT_LOW = 10.0
+
+price_history = deque(maxlen=VOLATILITY_WINDOW)
 
 # 初期資産
 INITIAL_BALANCE = 100000        # [BTC]仮想通貨に置く初期資産
@@ -33,43 +48,49 @@ INITIAL_BTC = 1.0               # [$]仮想通貨に置く初期資産
 # 資産状況を保持する辞書
 exchange_balances = {exchange: {"USD": INITIAL_BALANCE, "BTC": INITIAL_BTC} for exchange in EXCHANGE_APIS}
 
+def _fetch_price(exchange, url):
+    """Helper function for fetching a single exchange price."""
+    try:
+        response = requests.get(url, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if exchange == "Bitfinex":
+            return exchange, data[6]
+        elif exchange == "Binance":
+            return exchange, float(data["price"])
+        elif exchange == "Coinbase":
+            return exchange, float(data["data"]["amount"])
+        elif exchange == "Kraken":
+            return exchange, float(data["result"]["XXBTZUSD"]["c"][0])
+        elif exchange == "Huobi":
+            return exchange, float(data["tick"]["close"])
+        elif exchange == "OKX":
+            return exchange, float(data["data"][0]["last"])
+        elif exchange == "KuCoin":
+            return exchange, float(data["data"]["price"])
+        elif exchange == "Gate.io":
+            return exchange, float(data[0]["last"])
+        elif exchange == "Bitstamp":
+            return exchange, float(data["last"])
+        elif exchange == "Gemini":
+            return exchange, float(data["last"])
+        elif exchange == "Poloniex":
+            return exchange, float(data["close"])
+        elif exchange == "Crypto.com":
+            return exchange, float(data["result"]["data"][0]["a"])
+    except Exception as e:
+        print(f"Error fetching price from {exchange}: {e}")
+    return exchange, None
+
+
 def fetch_prices():
-    """
-    各取引所のBTC価格を取得し、辞書形式で返す。
-    """
+    """Retrieve BTC prices from all exchanges in parallel."""
     prices = {}
-    for exchange, url in EXCHANGE_APIS.items():
-        try:
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
-            data = response.json()
-            if exchange == "Bitfinex":
-                prices[exchange] = data[6]
-            elif exchange == "Binance":
-                prices[exchange] = float(data["price"])
-            elif exchange == "Coinbase":
-                prices[exchange] = float(data["data"]["amount"])
-            elif exchange == "Kraken":
-                prices[exchange] = float(data["result"]["XXBTZUSD"]["c"][0])
-            elif exchange == "Huobi":
-                prices[exchange] = float(data["tick"]["close"])
-            elif exchange == "OKX":
-                prices[exchange] = float(data["data"][0]["last"])
-            elif exchange == "KuCoin":
-                prices[exchange] = float(data["data"]["price"])
-            elif exchange == "Gate.io":
-                prices[exchange] = float(data[0]["last"])
-            elif exchange == "Bitstamp":
-                prices[exchange] = float(data["last"])
-            elif exchange == "Gemini":
-                prices[exchange] = float(data["last"])
-            elif exchange == "Poloniex":
-                prices[exchange] = float(data["close"])
-            elif exchange == "Crypto.com":
-                prices[exchange] = float(data["result"]["data"][0]["a"])
-        except Exception as e:
-            print(f"Error fetching price from {exchange}: {e}")
-            prices[exchange] = None
+    with ThreadPoolExecutor(max_workers=len(EXCHANGE_APIS)) as executor:
+        futures = [executor.submit(_fetch_price, ex, url) for ex, url in EXCHANGE_APIS.items()]
+        for future in as_completed(futures):
+            ex, price = future.result()
+            prices[ex] = price
     return prices
 
 def calculate_threshold_difference(min_price, max_price, trade_volume):
@@ -157,6 +178,26 @@ def calculate_net_profit(min_price, max_price, trade_volume):
     net_profit = revenue - cost
     return net_profit, threshold_diff
 
+
+def adjust_parameters(prices):
+    """Adjust slippage and profit threshold based on recent volatility."""
+    valid_prices = [p for p in prices.values() if p is not None]
+    if not valid_prices:
+        return
+    spread = max(valid_prices) - min(valid_prices)
+    mid = sum(valid_prices) / len(valid_prices)
+    volatility = spread / mid if mid else 0
+    price_history.append(volatility)
+    avg_vol = sum(price_history) / len(price_history)
+
+    global SLIPPAGE_RATE, MIN_PROFIT_AMOUNT
+    if avg_vol > VOLATILITY_THRESHOLD_HIGH:
+        SLIPPAGE_RATE = SLIPPAGE_HIGH
+        MIN_PROFIT_AMOUNT = MIN_PROFIT_HIGH
+    elif avg_vol < VOLATILITY_THRESHOLD_LOW:
+        SLIPPAGE_RATE = SLIPPAGE_LOW
+        MIN_PROFIT_AMOUNT = MIN_PROFIT_LOW
+
 def simulate_trades(num_trades=NUM_TRADE, interval=INTERVAL):
     """
     売買をシミュレーション。
@@ -168,6 +209,7 @@ def simulate_trades(num_trades=NUM_TRADE, interval=INTERVAL):
     for i in range(num_trades):
         print(f"\nTrade {i + 1}/{num_trades}")
         prices = fetch_prices()
+        adjust_parameters(prices)
         valid_prices = {ex: p for ex, p in prices.items() if p is not None}
         if not valid_prices:
             print("No valid price data available. Skipping trade.")
