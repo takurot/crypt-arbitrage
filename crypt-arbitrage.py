@@ -40,7 +40,8 @@ def fetch_prices():
     prices = {}
     for exchange, url in EXCHANGE_APIS.items():
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=5)
+            response.raise_for_status()
             data = response.json()
             if exchange == "Bitfinex":
                 prices[exchange] = data[6]
@@ -52,6 +53,20 @@ def fetch_prices():
                 prices[exchange] = float(data["result"]["XXBTZUSD"]["c"][0])
             elif exchange == "Huobi":
                 prices[exchange] = float(data["tick"]["close"])
+            elif exchange == "OKX":
+                prices[exchange] = float(data["data"][0]["last"])
+            elif exchange == "KuCoin":
+                prices[exchange] = float(data["data"]["price"])
+            elif exchange == "Gate.io":
+                prices[exchange] = float(data[0]["last"])
+            elif exchange == "Bitstamp":
+                prices[exchange] = float(data["last"])
+            elif exchange == "Gemini":
+                prices[exchange] = float(data["last"])
+            elif exchange == "Poloniex":
+                prices[exchange] = float(data["close"])
+            elif exchange == "Crypto.com":
+                prices[exchange] = float(data["result"]["data"][0]["a"])
         except Exception as e:
             print(f"Error fetching price from {exchange}: {e}")
             prices[exchange] = None
@@ -153,13 +168,16 @@ def simulate_trades(num_trades=NUM_TRADE, interval=INTERVAL):
     for i in range(num_trades):
         print(f"\nTrade {i + 1}/{num_trades}")
         prices = fetch_prices()
-        if not prices:
+        valid_prices = {ex: p for ex, p in prices.items() if p is not None}
+        if not valid_prices:
+            print("No valid price data available. Skipping trade.")
+            time.sleep(interval)
             continue
 
-        max_price = max(prices.values())
-        min_price = min(prices.values())
-        max_exchange = max(prices, key=prices.get)
-        min_exchange = min(prices, key=prices.get)
+        max_price = max(valid_prices.values())
+        min_price = min(valid_prices.values())
+        max_exchange = max(valid_prices, key=valid_prices.get)
+        min_exchange = min(valid_prices, key=valid_prices.get)
 
         trade_volume = min(DEFAULT_TRADE_VOLUME, exchange_balances[min_exchange]["USD"] / min_price, exchange_balances[max_exchange]["BTC"])
 
@@ -198,7 +216,10 @@ def calculate_total_assets(prices):
     total_usd = 0
     for exchange, balance in exchange_balances.items():
         total_usd += balance["USD"]
-        total_usd += balance["BTC"] * prices.get(exchange, 0)  # BTCをUSDに換算
+        price = prices.get(exchange)
+        if price is None:
+            price = 0
+        total_usd += balance["BTC"] * price  # BTCをUSDに換算
     return total_usd
 
 if __name__ == "__main__":
