@@ -6,10 +6,11 @@ This repository contains a Python script for simulating cryptocurrency arbitrage
 
 ## Features
 
-- **Real-time price fetching**: Connects to major exchange APIs to retrieve the latest BTC/USD prices.
+- **Real-time price fetching**: Connects to major exchange APIs to retrieve the latest BTC/USD prices using parallel requests for lower latency.
 - **Profit calculation**: Accounts for slippage, trading fees, and transfer fees to calculate net profit.
 - **Trade simulation**: Simulates buy and sell trades between exchanges to evaluate potential profits.
 - **Portfolio rebalancing**: Maintains balanced BTC holdings across exchanges to optimize arbitrage opportunities.
+- **Dynamic parameters**: Slippage and minimum profit thresholds adjust automatically based on recent market volatility.
 - **Customizable parameters**: Allows adjustment of fees, trade volume, and simulation settings.
 - **Robust error handling**: Skips unavailable exchange data without interrupting the simulation.
 
@@ -68,15 +69,17 @@ python crypt-arbitrage.py
 
 ### Adjust settings
 
-You can modify the following parameters in the script to customize the simulation:
+You can modify the following parameters in the script to customize the simulation.
+Some values, such as slippage and minimum profit threshold, are automatically
+adjusted by the simulator:
 
-- `SLIPPAGE_RATE`: Slippage percentage (default: `0.001` or 0.1%)
-- `FEE_RATE`: Trading fee percentage (default: `0.002` or 0.2%)
-- `TRANSFER_FEE_RATE`: BTC transfer fee percentage (default: `0.001` or 0.1%)
-- `DEFAULT_TRADE_VOLUME`: Default trade volume in BTC (default: `0.01`)
-- `MIN_PROFIT_AMOUNT`: Minimum profit in USD to execute trades (default: `$10`)
-- `INTERVAL`: Time interval between trades in seconds (default: `7.0`)
-- `NUM_TRADE`: Number of trades to simulate (default: `50`)
+- `SLIPPAGE_RATE`: Base slippage percentage (default: `0.001` or 0.1%).
+- `FEE_RATE`: Trading fee percentage (default: `0.002` or 0.2%).
+- `TRANSFER_FEE_RATE`: BTC transfer fee percentage (default: `0.001` or 0.1%).
+- `DEFAULT_TRADE_VOLUME`: Default trade volume in BTC (default: `0.01`).
+- `MIN_PROFIT_AMOUNT`: Base minimum profit in USD to execute trades (default: `$10`).
+- `INTERVAL`: Time interval between trades in seconds (default: `7.0`).
+- `NUM_TRADE`: Number of trades to simulate (default: `50`).
 
 ---
 
@@ -106,7 +109,7 @@ Total Net Profit: $20.00
 
 ### `fetch_prices()`
 
-Fetches real-time BTC prices from all supported exchanges and returns a dictionary of prices.
+Fetches real-time BTC prices from all supported exchanges using parallel HTTP requests and returns a dictionary of prices.
 
 ### `calculate_net_profit(min_price, max_price, trade_volume)`
 
@@ -119,6 +122,10 @@ Simulates the execution of a trade and updates the portfolio balances.
 ### `rebalance_btc()`
 
 Balances BTC holdings across exchanges to optimize trading opportunities.
+
+### `adjust_parameters(prices)`
+
+Dynamically updates slippage and profit thresholds based on recent price volatility.
 
 ### `simulate_trades()`
 
