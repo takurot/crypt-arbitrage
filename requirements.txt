@@ -1,0 +1,15 @@
+# crypt-arbitrage dependencies
+# Main HTTP library for API requests
+requests==2.32.4
+
+# urllib3 v1.x to avoid LibreSSL compatibility warnings on macOS
+urllib3>=1.26.0,<2.0
+
+# SSL certificate validation
+certifi>=2023.0.0
+
+# Character encoding detection and normalization
+charset-normalizer>=3.0.0
+
+# Internationalized Domain Names support
+idna>=3.0.0 

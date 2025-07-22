@@ -13,7 +13,7 @@ EXCHANGE_APIS = {
     "Gate.io": "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDT",
     "Bitstamp": "https://www.bitstamp.net/api/v2/ticker/btcusd/",
     "Gemini": "https://api.gemini.com/v1/pubticker/btcusd",
-    "Poloniex": "https://api.poloniex.com/markets/BTC_USDT/ticker",
+    # "Poloniex": "https://api.poloniex.com/markets/BTC_USDT/ticker",
     "Crypto.com": "https://api.crypto.com/v2/public/get-ticker?instrument_name=BTC_USDT"
 }
 
