@@ -1,0 +1,28 @@
+# Example 2: Bollinger Band Mean Reversion
+#
+# This strategy bets on price reverting to the mean when it hits the bands.
+# We optimize 'window' (moving average) and 'std_dev' (band width).
+
+experiment_name = "example_bollinger_reversion"
+strategy = "BollingerReversion"
+
+[data]
+path = "data/BTCUSDT.csv"
+
+[optimization]
+method = "monte_carlo"
+samples = 20
+seed = 100
+
+# Parameter Search Space
+[parameters.window]
+type = "int"
+min = 20
+max = 300
+distribution = "log_uniform"  # Explore small and large windows equally
+
+[parameters.std_dev]
+type = "float"
+min = 1.5
+max = 3.5
+distribution = "uniform"
