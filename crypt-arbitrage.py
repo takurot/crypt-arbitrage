@@ -1,9 +1,18 @@
 import time
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
+import polars as pl
+import argparse
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 各取引所のAPIエンドポイント
+# Fallback for dev environment where library might not be installed
+try:
+    from rust_backtester import Backtester
+except ImportError:
+    print("Error: rust_backtester not installed. Please run setup.")
+    sys.exit(1)
+
+# Exchange Endpoints
 EXCHANGE_APIS = {
     "Bitfinex": "https://api-pub.bitfinex.com/v2/ticker/tBTCUSD",
     "Binance": "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
@@ -15,254 +24,206 @@ EXCHANGE_APIS = {
     "Gate.io": "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=BTC_USDT",
     "Bitstamp": "https://www.bitstamp.net/api/v2/ticker/btcusd/",
     "Gemini": "https://api.gemini.com/v1/pubticker/btcusd",
-    # "Poloniex": "https://api.poloniex.com/markets/BTC_USDT/ticker",
     "Crypto.com": "https://api.crypto.com/v2/public/get-ticker?instrument_name=BTC_USDT"
 }
 
-# スリッページと手数料のパラメータ
-BASE_SLIPPAGE_RATE = 0.001      # 0.1% 通常時のスリッページ
-SLIPPAGE_RATE = BASE_SLIPPAGE_RATE
-FEE_RATE = 0.002                # 0.2% 一般的な値
-TRANSFER_FEE_RATE = 0.001       # 0.1% 手数料でBTC移動
-DEFAULT_TRADE_VOLUME = 0.01     # [BTC]デフォルトの取引量
-BASE_MIN_PROFIT = 10.0          # [$]通常時の最小利益額
-MIN_PROFIT_AMOUNT = BASE_MIN_PROFIT
-INTERVAL = 7.0                  # [sec]取引間隔
-NUM_TRADE = 50                  # [回] シミュレーション上の取引回数
-
-# ボラティリティ計測用
-VOLATILITY_WINDOW = 5
-VOLATILITY_THRESHOLD_HIGH = 0.005  # 0.5%
-VOLATILITY_THRESHOLD_LOW = 0.002   # 0.2%
-SLIPPAGE_HIGH = 0.002
-SLIPPAGE_LOW = 0.001
-MIN_PROFIT_HIGH = 15.0
-MIN_PROFIT_LOW = 10.0
-
-price_history = deque(maxlen=VOLATILITY_WINDOW)
-
-# 初期資産
-INITIAL_BALANCE = 100000        # [BTC]仮想通貨に置く初期資産
-INITIAL_BTC = 1.0               # [$]仮想通貨に置く初期資産
-
-# 資産状況を保持する辞書
-exchange_balances = {exchange: {"USD": INITIAL_BALANCE, "BTC": INITIAL_BTC} for exchange in EXCHANGE_APIS}
+# Defaults
+DEFAULT_TRADE_VOLUME = 0.01
+INITIAL_BALANCE_USD = 100000.0
+INITIAL_BALANCE_BTC = 1.0
 
 def _fetch_price(exchange, url):
     """Helper function for fetching a single exchange price."""
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, timeout=3)
         response.raise_for_status()
         data = response.json()
-        if exchange == "Bitfinex":
-            return exchange, data[6]
-        elif exchange == "Binance":
-            return exchange, float(data["price"])
-        elif exchange == "Coinbase":
-            return exchange, float(data["data"]["amount"])
-        elif exchange == "Kraken":
-            return exchange, float(data["result"]["XXBTZUSD"]["c"][0])
-        elif exchange == "Huobi":
-            return exchange, float(data["tick"]["close"])
-        elif exchange == "OKX":
-            return exchange, float(data["data"][0]["last"])
-        elif exchange == "KuCoin":
-            return exchange, float(data["data"]["price"])
-        elif exchange == "Gate.io":
-            return exchange, float(data[0]["last"])
-        elif exchange == "Bitstamp":
-            return exchange, float(data["last"])
-        elif exchange == "Gemini":
-            return exchange, float(data["last"])
-        elif exchange == "Poloniex":
-            return exchange, float(data["close"])
-        elif exchange == "Crypto.com":
-            return exchange, float(data["result"]["data"][0]["a"])
-    except Exception as e:
-        print(f"Error fetching price from {exchange}: {e}")
-    return exchange, None
+        price = None
+        
+        # Parsers
+        if exchange == "Bitfinex": price = data[6]
+        elif exchange == "Binance": price = float(data["price"])
+        elif exchange == "Coinbase": price = float(data["data"]["amount"])
+        elif exchange == "Kraken": price = float(data["result"]["XXBTZUSD"]["c"][0])
+        elif exchange == "Huobi": price = float(data["tick"]["close"])
+        elif exchange == "OKX": price = float(data["data"][0]["last"])
+        elif exchange == "KuCoin": price = float(data["data"]["price"])
+        elif exchange == "Gate.io": price = float(data[0]["last"])
+        elif exchange == "Bitstamp": price = float(data["last"])
+        elif exchange == "Gemini": price = float(data["last"])
+        elif exchange == "Crypto.com": price = float(data["result"]["data"][0]["a"])
+        
+        return exchange, price
+    except Exception:
+        return exchange, None
 
-
-def fetch_prices():
+def fetch_prices_snapshot():
     """Retrieve BTC prices from all exchanges in parallel."""
     prices = {}
     with ThreadPoolExecutor(max_workers=len(EXCHANGE_APIS)) as executor:
         futures = [executor.submit(_fetch_price, ex, url) for ex, url in EXCHANGE_APIS.items()]
         for future in as_completed(futures):
             ex, price = future.result()
-            prices[ex] = price
+            if price is not None:
+                prices[ex] = price
     return prices
 
-def calculate_threshold_difference(min_price, max_price, trade_volume):
+class ArbitrageStrategy:
     """
-    必要なしきい値を計算。
+    Arbitrage Strategy that can be configured with different parameters.
     """
-    buy_slippage = min_price * SLIPPAGE_RATE * trade_volume
-    sell_slippage = max_price * SLIPPAGE_RATE * trade_volume
-    buy_fee = min_price * FEE_RATE * trade_volume
-    sell_fee = max_price * FEE_RATE * trade_volume
-    return buy_slippage + sell_slippage + buy_fee + sell_fee
+    def __init__(self, name, min_profit, slippage_rate=0.001):
+        self.name = name
+        self.min_profit = min_profit
+        self.slippage_rate = slippage_rate
+        
+        # State
+        self.prices = {}
+        self.balances = {ex: {"USD": INITIAL_BALANCE_USD, "BTC": INITIAL_BALANCE_BTC} for ex in EXCHANGE_APIS}
+        self.total_profit = 0.0
+        self.trade_count = 0
+        self.trades = []
 
-def execute_trade(buy_exchange, sell_exchange, trade_volume, min_price, max_price):
-    """
-    売買を実行し、資産を更新。
-    :param buy_exchange: 購入取引所
-    :param sell_exchange: 売却取引所
-    :param trade_volume: 取引量 (BTC)
-    :param min_price: 購入価格 (USD/BTC)
-    :param max_price: 売却価格 (USD/BTC)
-    :return: 成功時は純利益を返し、失敗時はエラーメッセージを返す。
-    """
-    global exchange_balances
+        # Internal tracking
+        self.last_ts = 0
 
-    # 資金の計算
-    cost = trade_volume * min_price * (1 + SLIPPAGE_RATE)  # 購入コスト (USD)
-    revenue = trade_volume * max_price * (1 - SLIPPAGE_RATE)  # 売却収益 (USD)
+    def on_tick(self, tick, ctx):
+        # tick is a PyTick object.
+        exchange = getattr(tick, 'exchange_name', None)
+        if not exchange: return
 
-    # エラーチェック: 残高不足の場合
-    if exchange_balances[buy_exchange]["USD"] < cost:
-        return f"Insufficient USD in {buy_exchange}. Required: {cost:.2f}, Available: {exchange_balances[buy_exchange]['USD']:.2f}"
-    if exchange_balances[sell_exchange]["BTC"] < trade_volume:
-        return f"Insufficient BTC in {sell_exchange}. Required: {trade_volume:.4f}, Available: {exchange_balances[sell_exchange]['BTC']:.4f}"
+        # Price is scaled i64 (1e8)
+        price = tick.price / 1e8 
 
-    # 資産を更新
-    exchange_balances[buy_exchange]["USD"] -= cost
-    exchange_balances[buy_exchange]["BTC"] += trade_volume
+        self.prices[exchange] = price
+        self.check_arbitrage(exchange)
 
-    exchange_balances[sell_exchange]["BTC"] -= trade_volume
-    exchange_balances[sell_exchange]["USD"] += revenue
+    def check_arbitrage(self, current_exchange):
+        if not self.prices: return
 
-    # 純利益を計算して返す
-    net_profit = revenue - cost
-    return net_profit
-
-def calculate_costs_and_revenue(min_price, max_price, trade_volume):
-    """
-    売買に関するコストと収益を計算。
-    """
-    buy_slippage = min_price * SLIPPAGE_RATE * trade_volume
-    sell_slippage = max_price * SLIPPAGE_RATE * trade_volume
-    buy_fee = min_price * FEE_RATE * trade_volume
-    sell_fee = max_price * FEE_RATE * trade_volume
-    cost = min_price * trade_volume + buy_slippage + buy_fee
-    revenue = max_price * trade_volume - sell_slippage - sell_fee
-    threshold_diff = buy_slippage + sell_slippage + buy_fee + sell_fee
-    return cost, revenue, threshold_diff
-
-def rebalance_btc():
-    """
-    BTC残高を平準化する。
-    """
-    global exchange_balances
-    low_balances = {ex: bal["BTC"] for ex, bal in exchange_balances.items() if bal["BTC"] < DEFAULT_TRADE_VOLUME}
-    high_balances = {ex: bal["BTC"] for ex, bal in exchange_balances.items() if bal["BTC"] > DEFAULT_TRADE_VOLUME}
-
-    for low_exchange, low_btc in low_balances.items():
-        for high_exchange, high_btc in high_balances.items():
-            if high_btc > DEFAULT_TRADE_VOLUME:
-                transfer_amount = min(DEFAULT_TRADE_VOLUME - low_btc, high_btc - DEFAULT_TRADE_VOLUME)
-                transfer_fee = transfer_amount * TRANSFER_FEE_RATE
-
-                # 更新
-                exchange_balances[high_exchange]["BTC"] -= transfer_amount
-                exchange_balances[low_exchange]["BTC"] += transfer_amount - transfer_fee
-
-                print(f"Rebalanced {transfer_amount:.4f} BTC from {high_exchange} to {low_exchange} (Fee: {transfer_fee:.4f} BTC)")
-                break
-
-def calculate_net_profit(min_price, max_price, trade_volume):
-    """
-    純利益としきい値差を計算。
-    """
-    cost, revenue, threshold_diff = calculate_costs_and_revenue(min_price, max_price, trade_volume)
-    net_profit = revenue - cost
-    return net_profit, threshold_diff
-
-
-def adjust_parameters(prices):
-    """Adjust slippage and profit threshold based on recent volatility."""
-    valid_prices = [p for p in prices.values() if p is not None]
-    if not valid_prices:
-        return
-    spread = max(valid_prices) - min(valid_prices)
-    mid = sum(valid_prices) / len(valid_prices)
-    volatility = spread / mid if mid else 0
-    price_history.append(volatility)
-    avg_vol = sum(price_history) / len(price_history)
-
-    global SLIPPAGE_RATE, MIN_PROFIT_AMOUNT
-    if avg_vol > VOLATILITY_THRESHOLD_HIGH:
-        SLIPPAGE_RATE = SLIPPAGE_HIGH
-        MIN_PROFIT_AMOUNT = MIN_PROFIT_HIGH
-    elif avg_vol < VOLATILITY_THRESHOLD_LOW:
-        SLIPPAGE_RATE = SLIPPAGE_LOW
-        MIN_PROFIT_AMOUNT = MIN_PROFIT_LOW
-
-def simulate_trades(num_trades=NUM_TRADE, interval=INTERVAL):
-    """
-    売買をシミュレーション。
-    """
-    initial_assets = calculate_total_assets(fetch_prices())
-    print(f"Initial Total Assets: ${initial_assets:,.2f}")
-    total_net_profit = 0  # 累積純利益
-
-    for i in range(num_trades):
-        print(f"\nTrade {i + 1}/{num_trades}")
-        prices = fetch_prices()
-        adjust_parameters(prices)
-        valid_prices = {ex: p for ex, p in prices.items() if p is not None}
-        if not valid_prices:
-            print("No valid price data available. Skipping trade.")
-            time.sleep(interval)
-            continue
+        # Check against all other exchanges (Simple logic: find global Min/Max)
+        valid_prices = {k: v for k, v in self.prices.items() if v is not None}
+        if len(valid_prices) < 2: return
 
         max_price = max(valid_prices.values())
         min_price = min(valid_prices.values())
         max_exchange = max(valid_prices, key=valid_prices.get)
         min_exchange = min(valid_prices, key=valid_prices.get)
 
-        trade_volume = min(DEFAULT_TRADE_VOLUME, exchange_balances[min_exchange]["USD"] / min_price, exchange_balances[max_exchange]["BTC"])
+        # Only trade if the current update potentially triggers an arb involving this exchange
+        if min_exchange == current_exchange or max_exchange == current_exchange:
+             self.execute_trade(min_exchange, max_exchange, min_price, max_price)
 
-        net_profit, _ = calculate_net_profit(min_price, max_price, trade_volume)
+    def execute_trade(self, buy_exchange, sell_exchange, min_price, max_price):
+         trade_volume = DEFAULT_TRADE_VOLUME
+         
+         # Calculate costs with configured slippage
+         cost = trade_volume * min_price * (1 + self.slippage_rate)
+         revenue = trade_volume * max_price * (1 - self.slippage_rate)
+         
+         if self.balances[buy_exchange]["USD"] < cost: return
+         if self.balances[sell_exchange]["BTC"] < trade_volume: return
+             
+         net_profit = revenue - cost
+         if net_profit > self.min_profit:
+             # Execute
+             self.balances[buy_exchange]["USD"] -= cost
+             self.balances[buy_exchange]["BTC"] += trade_volume
+             self.balances[sell_exchange]["BTC"] -= trade_volume
+             self.balances[sell_exchange]["USD"] += revenue
+             
+             self.total_profit += net_profit
+             self.trade_count += 1
+             
+             self.trades.append({
+                 "strategy": self.name,
+                 "buy_ex": buy_exchange,
+                 "sell_ex": sell_exchange,
+                 "buy_price": min_price,
+                 "sell_price": max_price,
+                 "profit": net_profit
+             })
 
-        print(f"Buy at {min_exchange} (${min_price:,.2f})")
-        print(f"Sell at {max_exchange} (${max_price:,.2f})")
-        print(f"Net Profit: ${net_profit:.2f}")
-        # print(f"Threshold Difference: ${threshold_diff:.2f}")
+def main():
+    parser = argparse.ArgumentParser(description="Crypto Arbitrage Simulator (Live Data)")
+    parser.add_argument("--duration", type=int, default=30, help="Duration to collect data in seconds")
+    parser.add_argument("--interval", type=int, default=5, help="Interval between snapshots in seconds")
+    args = parser.parse_args()
 
-        if net_profit >= MIN_PROFIT_AMOUNT:
-            execute_trade(min_exchange, max_exchange, trade_volume, min_price, max_price)
-            total_net_profit += net_profit
-            print(f"Trade executed successfully! Net Profit: ${net_profit:.2f}")
-            print("Balances:")
-            for exchange, balance in exchange_balances.items():
-                print(f"{exchange}: {balance['USD']:.2f} USD, {balance['BTC']:.2f} BTC")
-        else:
-            print(f"Trade skipped due to low profitability. Net Profit: ${net_profit:.2f}, Required: ${MIN_PROFIT_AMOUNT:.2f}")
+    print(f"=== Crypto Arbitrage Simulator ===")
+    print(f"Collecting live data for {args.duration}s (interval: {args.interval}s)...")
+    
+    ticks = []
+    iterations = max(1, args.duration // args.interval)
+    
+    start_time = time.time_ns()
+    
+    try:
+        for i in range(iterations): 
+            print(f"  [{i+1}/{iterations}] Fetching snapshot...", end="\r")
+            prices = fetch_prices_snapshot()
+            ts = time.time_ns()
+            count = 0
+            for ex, price in prices.items():
+                ticks.append({
+                    "ts_exchange": ts,
+                    "price": int(price * 1e8), 
+                    "qty": int(1.0 * 1e8),
+                    "side": 1,
+                    "exchange_name": ex
+                })
+                count += 1
+            print(f"  [{i+1}/{iterations}] Fetched {count} prices.       ")
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\nStopping data collection...")
 
-        # 平準化処理 (条件に応じて実行)
-        if i % 5 == 0 or any(bal["BTC"] < DEFAULT_TRADE_VOLUME for bal in exchange_balances.values()):
-            rebalance_btc()
+    if not ticks:
+        print("No data collected.")
+        return
 
-        time.sleep(interval)
-
-    final_assets = calculate_total_assets(fetch_prices())
-    print(f"\nFinal Total Assets: ${final_assets:,.2f}")
-    print(f"Asset Change: ${final_assets - initial_assets:,.2f}")
-    print(f"Total Net Profit: ${total_net_profit:.2f}")
-
-def calculate_total_assets(prices):
-    """
-    総資産を計算 (USD換算)。
-    """
-    total_usd = 0
-    for exchange, balance in exchange_balances.items():
-        total_usd += balance["USD"]
-        price = prices.get(exchange)
-        if price is None:
-            price = 0
-        total_usd += balance["BTC"] * price  # BTCをUSDに換算
-    return total_usd
+    print(f"\nData Collection Complete. {len(ticks)} ticks.")
+    
+    # Prepare Data
+    df = pl.DataFrame(ticks).sort("ts_exchange")
+    data_map = {"BTCUSDT": df.lazy()}
+    
+    # Initialize Backtester
+    tester = Backtester(data=data_map, python_mode='tick')
+    
+    # Strategies
+    scenarios = [
+        {"name": "Conservative", "min_profit": 30.0, "slippage": 0.002},
+        {"name": "Balanced",     "min_profit": 10.0, "slippage": 0.001},
+        {"name": "Aggressive",   "min_profit": 5.0,  "slippage": 0.0005},
+    ]
+    
+    strategies = [ArbitrageStrategy(s["name"], s["min_profit"], s["slippage"]) for s in scenarios]
+    
+    print(f"\nRunning Parallel Backtest for {len(strategies)} strategies...")
+    start_optim = time.perf_counter()
+    
+    tester.run_many(strategies)
+    
+    elapsed = time.perf_counter() - start_optim
+    print(f"Backtest finished in {elapsed:.4f}s")
+    
+    # Report
+    print("\n" + "="*80)
+    print(f"{'STRATEGY':<15} | {'PROFIT ($)':<12} | {'TRADES':<8} | {'SLIPPAGE':<8}")
+    print("-" * 80)
+    
+    results = []
+    for s in strategies:
+        print(f"{s.name:<15} | ${s.total_profit:<11.2f} | {s.trade_count:<8} | {s.slippage_rate*100}%")
+        results.extend(s.trades)
+        
+    print("=" * 80)
+    
+    if results:
+        print("\nTop 5 Most Profitable Trades:")
+        trades_df = pl.DataFrame(results).sort("profit", descending=True).head(5)
+        print(trades_df)
 
 if __name__ == "__main__":
-    simulate_trades()
+    main()
