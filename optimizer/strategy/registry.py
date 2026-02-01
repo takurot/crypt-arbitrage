@@ -1,0 +1,36 @@
+from typing import Dict, Type, Optional
+from optimizer.strategy.base import BaseStrategy
+
+class StrategyRegistry:
+    _strategies: Dict[str, Type[BaseStrategy]] = {}
+
+    @classmethod
+    def register(cls, name: str):
+        """Decorator to register a strategy class."""
+        def decorator(strategy_cls: Type[BaseStrategy]):
+            cls._strategies[name] = strategy_cls
+            return strategy_cls
+        return decorator
+
+    @classmethod
+    def get(cls, name: str) -> Optional[Type[BaseStrategy]]:
+        """Get a strategy class by name."""
+        return cls._strategies.get(name)
+
+    @classmethod
+    def load_strategy_from_module(cls, module_path: str):
+        """Dynamically import a module to trigger registration."""
+        import importlib
+        try:
+            importlib.import_module(module_path)
+            # print(f"Loaded strategy module: {module_path}")
+        except ImportError as e:
+            print(f"Failed to load strategy module {module_path}: {e}")
+
+    @classmethod
+    def list_strategies(cls):
+        """List all registered strategy names."""
+        return list(cls._strategies.keys())
+
+# Alias for ease of use
+register_strategy = StrategyRegistry.register
