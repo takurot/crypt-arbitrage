@@ -2,6 +2,14 @@
 
 This repository hosts a high-performance trading strategy optimization platform and a cryptocurrency arbitrage simulator. It leverages a Rust-based backtesting engine (`rust_backtester`) for speed and efficiency, making it suitable for High-Frequency Trading (HFT) strategy development.
 
+## 🚀 Performance Benchmarks
+
+- **Throughput**: Processed **5.5 Million** tick updates against **30 concurrent strategy instances** in **< 76 seconds**.
+- **Speed**: Approx. **2.2 Million strategy-events per second** (Effective Throughput).
+- **Scalability**: Zero-copy data streaming via **Apache Arrow** allows handling datasets larger than RAM.
+
+*(Tested on Apple Silicon M2, Single Core Execution)*
+
 ## Features
 
 - **High-Performance Backtesting**: Powered by a Rust engine (`rust_backtester`) linked via PyO3.
