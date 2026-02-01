@@ -65,7 +65,7 @@ The platform enables backtesting complex strategies (e.g., OFI Momentum, Bolling
 **Running an Experiment:**
 
 ```bash
-python optimizer/cli.py run e2e_config.toml
+python -m optimizer.cli run e2e_config.toml
 ```
 
 **Configuration (`e2e_config.toml` example):**
