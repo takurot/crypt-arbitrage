@@ -23,3 +23,9 @@ parallel_workers = 1
     distribution = "uniform"
     min = 1.0
     max = 10.0
+
+    [parameters.fee_rate]
+    type = "float"
+    distribution = "uniform"
+    min = 0.001
+    max = 0.001
