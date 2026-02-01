@@ -85,6 +85,12 @@ samples = 50
 type = "float"
 min = 1.0
 max = 10.0
+
+[parameters.fee_rate]
+type = "float"
+min = 0.001  # 0.1% fee
+max = 0.001
+distribution = "uniform"
 ```
 
 **Output:**
