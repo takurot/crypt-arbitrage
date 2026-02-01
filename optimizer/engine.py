@@ -105,13 +105,13 @@ class Optimizer:
             print(f"🚀 Initialized {len(self.strategies)} strategy instances.")
             
         # 3. Setup Backtester
-        # Dummy data for initialization (required by Rust engine currently?)
+        # Dummy data for initialization
         dummy_df = pl.DataFrame({"ts_exchange":[0],"price":[0],"qty":[0],"side":[1],"symbol_id":[0]}).lazy()
         
         bt = Backtester(
             data={"BTCUSDT": dummy_df}, 
             python_mode="batch", 
-            batch_ms=1000 # default
+            batch_ms=1000 
         )
         
         # 4. Stream Data
@@ -119,7 +119,6 @@ class Optimizer:
         wrapper = MultiStrategyWrapper(self.strategies)
         
         iterator = create_arrow_iterator(self.config.data.path)
-        # Using 5 columns schema from loader
         execution_schema = pa.schema([
             ("ts_exchange", pa.int64()), ("price", pa.int64()),
             ("qty", pa.int64()), ("side", pa.int8()), ("symbol_id", pa.int64()), 
@@ -127,7 +126,17 @@ class Optimizer:
         rb_reader = pa.RecordBatchReader.from_batches(execution_schema, iterator)
         
         start_time = time.perf_counter()
+        
+        # Call on_start hooks
+        for s in self.strategies:
+            s.on_start(None) # Context not fully available in simple mode yet
+            
         bt.run_arrow(stream=rb_reader, strategy=wrapper)
+        
+        # Call on_finish hooks
+        for s in self.strategies:
+            s.on_finish(None)
+            
         duration = time.perf_counter() - start_time
         
         if verbose:

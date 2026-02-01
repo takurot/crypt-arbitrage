@@ -16,7 +16,7 @@ class TestStrategies(unittest.TestCase):
         qtys = np.array([10.0, 10.0])
         sides = np.array([1, 1]) # Buys
         
-        strat.on_tick(prices, qtys, sides, None)
+        strat.on_ticks(prices, qtys, sides, None)
         
         self.assertEqual(strat.trade_count, 1)
         self.assertTrue(strat.position > 0)
@@ -33,7 +33,7 @@ class TestStrategies(unittest.TestCase):
         qtys = np.array([1.0]*5)
         sides = np.array([1]*5)
         
-        strat.on_tick(prices, qtys, sides, None)
+        strat.on_ticks(prices, qtys, sides, None)
         
         # Logic is sensitive to exact numpy calcs, but roughly checking logic flow
         stats = strat.get_stats()
