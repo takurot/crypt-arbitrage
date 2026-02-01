@@ -16,13 +16,14 @@ class BaseStrategy(ABC):
     def __init__(self, name: str = "Strategy"):
         self.name = name
         self.params: Dict[str, Any] = {}
+        self.equity_history: List[float] = [] # Track equity per batch for analytics
         
     def on_start(self, ctx: Any) -> None:
         """Called before the backtest starts."""
         pass
         
     @abstractmethod
-    def on_tick(self, batch: Any, ctx: Any) -> None:
+    def on_ticks(self, batch: Any, ctx: Any) -> None:
         """
         Called on every data batch.
         
@@ -31,6 +32,21 @@ class BaseStrategy(ABC):
             ctx: The execution context (provides submit_order, etc).
         """
         pass
+        
+    def calculate_drawdown(self, equity_curve: list) -> float:
+        """Helper to calculate Max Drawdown %."""
+        if not equity_curve: return 0.0
+        
+        peak = equity_curve[0]
+        max_dd = 0.0
+        
+        for val in equity_curve:
+            if val > peak:
+                peak = val
+            dd = (peak - val) / peak
+            if dd > max_dd:
+                max_dd = dd
+        return max_dd * 100.0
         
     def on_finish(self, ctx: Any) -> None:
         """Called after the backtest ends."""
