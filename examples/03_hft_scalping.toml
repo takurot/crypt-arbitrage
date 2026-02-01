@@ -1,0 +1,33 @@
+# Example 3: High Frequency Scalping
+#
+# Focused on very short-term signals with small windows.
+# Uses OFI Momentum but constrained to fast reactions.
+
+experiment_name = "example_hft_scalping"
+strategy = "OFI_Momentum"
+
+[data]
+path = "data/BTCUSDT.csv"
+
+[optimization]
+method = "monte_carlo"
+samples = 30
+seed = 777
+
+[parameters.window]
+type = "int"
+min = 2     # Very short decay
+max = 20    # Max 20 ticks
+distribution = "uniform"
+
+[parameters.threshold]
+type = "float"
+min = 0.1   # Highly sensitive
+max = 2.0
+distribution = "uniform"
+
+[parameters.fee_rate]
+type = "float"
+min = 0.001
+max = 0.001
+distribution = "uniform"

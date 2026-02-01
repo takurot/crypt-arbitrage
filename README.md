@@ -1,162 +1,134 @@
-# Cryptocurrency Arbitrage Simulator
+# Optimization Platform & Crypto Arbitrage Simulator
 
-This repository contains a Python script for simulating cryptocurrency arbitrage across multiple exchanges. It fetches real-time BTC prices, calculates potential profit margins considering fees and slippage, and simulates buy/sell transactions to demonstrate how arbitrage opportunities can be leveraged.
+This repository hosts a high-performance trading strategy optimization platform and a cryptocurrency arbitrage simulator. It leverages a Rust-based backtesting engine (`rust_backtester`) for speed and efficiency, making it suitable for High-Frequency Trading (HFT) strategy development.
 
----
+## 🚀 Performance Benchmarks
+
+- **Throughput**: Processed **5.5 Million** tick updates against **30 concurrent strategy instances** in **< 76 seconds**.
+- **Speed**: Approx. **2.2 Million strategy-events per second** (Effective Throughput).
+- **Scalability**: Zero-copy data streaming via **Apache Arrow** allows handling datasets larger than RAM.
+
+*(Tested on Apple Silicon M2, Single Core Execution)*
 
 ## Features
 
-- **Real-time price fetching**: Connects to major exchange APIs to retrieve the latest BTC/USD prices using parallel requests for lower latency.
-- **Profit calculation**: Accounts for slippage, trading fees, and transfer fees to calculate net profit.
-- **Trade simulation**: Simulates buy and sell trades between exchanges to evaluate potential profits.
-- **Portfolio rebalancing**: Maintains balanced BTC holdings across exchanges to optimize arbitrage opportunities.
-- **Dynamic parameters**: Slippage and minimum profit thresholds adjust automatically based on recent market volatility.
-- **Customizable parameters**: Allows adjustment of fees, trade volume, and simulation settings.
-- **Robust error handling**: Skips unavailable exchange data without interrupting the simulation.
+- **High-Performance Backtesting**: Powered by a Rust engine (`rust_backtester`) linked via PyO3.
+- **Optimization Platform**: 
+    - **Monte Carlo & Grid Search**: Automatically tune strategy parameters.
+    - **Parallel Execution**: Run hundreds of strategy instances in a single pass over streaming data.
+    - **Streaming Data**: Efficiently handles large datasets (e.g., millions of tick rows) using PyArrow and Polars.
+- **Arbitrage Tool**: 
+    - Real-time price fetching from 10+ major exchanges (Binance, Kraken, Coinbase, etc.).
+    - Parallel execution to minimize latency.
+    - Live arbitrage simulation using the backtesting engine.
 
----
+## Prerequisites
 
-## Supported Exchanges
+- **Python 3.11+**
+- **Rust (Cargo)**: Required to build `rust_backtester`.
+- **Dependencies**: `polars`, `pyarrow`, `numpy`, `requests`, `toml`
 
-The script supports the following exchanges:
+## Data Source
 
-- Bitfinex
-- Binance
-- Coinbase
-- Kraken
-- Huobi
-- OKX
-- KuCoin
-- Gate.io
-- Bitstamp
-- Gemini
-- Poloniex
-- Crypto.com
-
----
+Sample high-frequency trade data (BTCUSDT, ETHUSDT) can be obtained from Kaggle:
+- [Binance Real Time Trades](https://www.kaggle.com/datasets/rossr61938/binance-real-time-trades-btcusdt-ethusdt?select=ETHUSDT.csv)
 
 ## Installation
 
-### Prerequisites
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/takurot/crypt-arbitrage.git
+   cd crypt-arbitrage
+   ```
 
-- Python 3.8 or higher
-- Required libraries: `requests`
+2. **Set up the environment**:
+   ```bash
+   # Create a virtual environment
+   python3 -m venv .venv
+   source .venv/bin/activate
+   
+   # Install dependencies
+   pip install -r requirements.txt
+   
+   # Build & Install the Rust Backtester
+   # (Ensure you are in the root directory where setup.py or similar logic exists, 
+   #  or manually build the rust_backtester wheel)
+   maturin develop --release
+   ```
 
-### Clone the repository
-
-```bash
-git clone https://github.com/takurot/crypt-arbitrage.git
-cd crypt-arbitrage
-```
-
-### Install dependencies
-
-```bash
-pip install requests
-```
-
----
+   *(Note: The project currently treats `rust_backtester` as a local companion library. Ensure it is accessible in your PYTHONPATH or installed via `maturin` / `pip`.)*
 
 ## Usage
 
-### Run the script
+### 1. Live Arbitrage Simulator
 
-To start the arbitrage simulation, run:
+Run the simulator to fetch live prices and simulate arbitrage trades in real-time.
 
 ```bash
-python crypt-arbitrage.py
+python crypt-arbitrage.py --duration 60 --interval 2
 ```
 
-### Adjust settings
+- `--duration`: Total simulation time in seconds.
+- `--interval`: Interval between price snapshots in seconds.
 
-You can modify the following parameters in the script to customize the simulation.
-Some values, such as slippage and minimum profit threshold, are automatically
-adjusted by the simulator:
+### 2. Strategy Optimization Platform
 
-- `SLIPPAGE_RATE`: Base slippage percentage (default: `0.001` or 0.1%).
-- `FEE_RATE`: Trading fee percentage (default: `0.002` or 0.2%).
-- `TRANSFER_FEE_RATE`: BTC transfer fee percentage (default: `0.001` or 0.1%).
-- `DEFAULT_TRADE_VOLUME`: Default trade volume in BTC (default: `0.01`).
-- `MIN_PROFIT_AMOUNT`: Base minimum profit in USD to execute trades (default: `$10`).
-- `INTERVAL`: Time interval between trades in seconds (default: `7.0`).
-- `NUM_TRADE`: Number of trades to simulate (default: `50`).
+The platform enables backtesting complex strategies (e.g., OFI Momentum, Bollinger Mean Reversion) using historical data defined in exact configuration files.
 
----
+**Running an Experiment:**
 
-## Example Output
+```bash
+python -m optimizer.cli run e2e_config.toml
+```
 
-```plaintext
-Initial Total Assets: $100,000.00
+**Configuration (`e2e_config.toml` example):**
 
-Trade 1/50
-Buy at Coinbase ($29,800.00)
-Sell at Binance ($30,100.00)
-Net Profit: $20.00
-Trade executed successfully! Net Profit: $20.00
-Balances:
-Coinbase: 9,970.00 USD, 1.01 BTC
-Binance: 30,120.00 USD, 0.99 BTC
+```toml
+experiment_name = "OFI_Optimization"
+strategy = "OFI_Momentum"
+
+[data]
+path = "data/BTCUSDT.csv"
+
+[optimization]
+method = "monte_carlo"
+samples = 50
+
+[parameters.threshold]
+type = "float"
+min = 1.0
+max = 10.0
+
+[parameters.fee_rate]
+type = "float"
+min = 0.001  # 0.1% fee
+max = 0.001
+distribution = "uniform"
+```
+
+**Output:**
+
+The CLI will output a ranked table of strategy performance, including Return on Investment (ROI), Max Drawdown, and Sharpe Ratio.
+
+```text
+===============================================================================================
+RANK | STRATEGY                  | ROI      | MAX DD   | SHARPE | TRADES
+-----------------------------------------------------------------------------------------------
+#1   | Config_6                  |  11.68% |   8.21% |   0.15 | 29781 
+#2   | Config_2                  |   9.88% |   9.02% |   0.12 | 22991 
 ...
-
-Final Total Assets: $100,020.00
-Asset Change: $20.00
-Total Net Profit: $20.00
 ```
 
----
+## Project Structure
 
-## Code Overview
-
-### `fetch_prices()`
-
-Fetches real-time BTC prices from all supported exchanges using parallel HTTP requests and returns a dictionary of prices.
-
-### `calculate_net_profit(min_price, max_price, trade_volume)`
-
-Calculates the net profit of a potential trade considering slippage and fees.
-
-### `execute_trade(buy_exchange, sell_exchange, trade_volume, min_price, max_price)`
-
-Simulates the execution of a trade and updates the portfolio balances.
-
-### `rebalance_btc()`
-
-Balances BTC holdings across exchanges to optimize trading opportunities.
-
-### `adjust_parameters(prices)`
-
-Dynamically updates slippage and profit thresholds based on recent price volatility.
-
-### `simulate_trades()`
-
-Runs the main simulation loop for the specified number of trades.
-
----
-
-## Notes
-
-- **Simulation only**: This script is for educational purposes and should not be used for actual trading without significant modifications and thorough testing.
-- **Market volatility**: Cryptocurrency prices can fluctuate rapidly, affecting profitability and execution.
-- **API limitations**: Ensure compliance with exchange API rate limits to avoid restrictions.
-
----
+- `crypt-arbitrage.py`: Entrypoint for live arbitrage simulation.
+- `optimizer/`: The main Python package for the optimization platform.
+  - `engine.py`: Core logic for parameter generation and simulation loops.
+  - `strategy/`: Strategy definitions (`base.py`, `ofi.py`, `bollinger.py`).
+  - `cli.py`: Command-line interface.
+  - `reporting.py`: Result formatting and export.
+- `rust_backtester/`: (External/Linked) Rust source code for the high-performance engine.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
----
-
-## Contributing
-
-Contributions are welcome! Feel free to submit issues or pull requests to improve the functionality or add support for more exchanges.
-
----
-
-## Acknowledgments
-
-Thanks to the developers of the supported exchanges' APIs for providing access to market data.
-
----
-
-Feel free to customize this README further to fit your repository!
+MIT

@@ -1,0 +1,34 @@
+# Example 1: Order Flow Imbalance (OFI) Momentum Strategy
+# 
+# This experiment explores the OFI Momentum strategy using Monte Carlo optimization.
+# It varies the 'window' (decay speed) and 'threshold' (signal sensitivity).
+
+experiment_name = "example_ofi_monte_carlo"
+strategy = "OFI_Momentum"
+
+[data]
+path = "data/BTCUSDT.csv"
+
+[optimization]
+method = "monte_carlo"
+samples = 20
+seed = 42
+
+# Parameter Search Space
+[parameters.window]
+type = "int"
+min = 10
+max = 200
+distribution = "uniform"
+
+[parameters.threshold]
+type = "float"
+min = 0.5
+max = 5.0
+distribution = "uniform"
+
+[parameters.fee_rate]
+type = "float"
+min = 0.001
+max = 0.001
+distribution = "uniform"

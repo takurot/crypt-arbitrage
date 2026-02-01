@@ -69,21 +69,35 @@ This document outlines the step-by-step plan to transform the current script-bas
 
 ### PR 6: Analytics & Robustness
 **Goal**: Deeper insight into strategy performance.
-- [ ] Search for stable clusters (not just single best param).
-- [ ] Add Max Drawdown and Sharpe Ratio to `BaseStrategy` stats.
-- [ ] Add trade logging option (CSV export of all trades).
+- [x] Search for stable clusters (not just single best param).
+- [x] Add Max Drawdown and Sharpe Ratio to `BaseStrategy` stats.
+- [x] Add trade logging option (CSV export of all trades).
+
+## Phase 5: Real-World Constraints
+
+### PR 7: Fees & Slippage Simulation
+**Goal**: Implement realistic cost simulation to avoid over-optimistic results.
+- [ ] Add `fee_rate` parameter to `BaseStrategy` (e.g., 0.1%).
+- [ ] Implement `slippage_model` (e.g., fixed % or volatility-based).
+- [ ] Update `execute_buy` / `execute_sell` to deduct costs from cash/balance.
+- [ ] Re-run E2E tests to verify impact on ROI.
 
 ---
 
 ## Execution Checklist
 
-- [ ] **Phase 0**: Alignment
-    - [ ] PR 0
-- [ ] **Phase 1**: Structure
-    - [ ] PR 1
-    - [ ] PR 2
-- [ ] **Phase 2**: Engine
-    - [ ] PR 3
-    - [ ] PR 4
-- [ ] **Phase 3**: Interface
-    - [ ] PR 5
+- [x] **Phase 0**: Alignment
+    - [x] PR 0
+- [x] **Phase 1**: Structure
+    - [x] PR 1
+    - [x] PR 2
+- [x] **Phase 2**: Engine
+    - [x] PR 3
+    - [x] PR 4
+- [x] **Phase 3**: Interface
+    - [x] PR 5
+- [x] **Phase 4**: Advanced Features
+    - [x] PR 6
+- [ ] **Phase 5**: Real-World Constraints
+    - [ ] PR 7
+

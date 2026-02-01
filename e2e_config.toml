@@ -1,0 +1,31 @@
+experiment_name = "e2e_ofi_test"
+strategy = "OFI_Momentum"
+
+[data]
+path = "data/BTCUSDT.csv"
+format = "csv"
+
+[optimization]
+method = "monte_carlo"
+samples = 10
+seed = 123
+parallel_workers = 1
+
+[parameters]
+    [parameters.window]
+    type = "int"
+    distribution = "log_uniform"
+    min = 10.0
+    max = 1000.0
+
+    [parameters.threshold]
+    type = "float"
+    distribution = "uniform"
+    min = 1.0
+    max = 10.0
+
+    [parameters.fee_rate]
+    type = "float"
+    distribution = "uniform"
+    min = 0.001
+    max = 0.001

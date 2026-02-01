@@ -3,7 +3,7 @@ from optimizer.strategy.base import BaseStrategy
 from optimizer.strategy.registry import StrategyRegistry, register_strategy
 
 class TestStrategy(BaseStrategy):
-    def on_tick(self, batch, ctx):
+    def on_ticks(self, batch, ctx):
         pass
     def get_stats(self):
         return {"test": True}

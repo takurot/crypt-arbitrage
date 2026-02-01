@@ -32,5 +32,23 @@ class StrategyRegistry:
         """List all registered strategy names."""
         return list(cls._strategies.keys())
 
+def discover_strategies():
+    """Import all modules in optimizer.strategy to trigger registration."""
+    import pkgutil
+    import importlib
+    import os
+    
+    # Get the directory of this package
+    package_dir = os.path.dirname(__file__)
+    
+    # Scan for modules
+    for _, name, _ in pkgutil.iter_modules([package_dir]):
+        if name == "base" or name == "registry":
+            continue
+        try:
+            importlib.import_module(f"optimizer.strategy.{name}")
+        except Exception as e:
+            print(f"Failed to auto-discover strategy {name}: {e}")
+
 # Alias for ease of use
 register_strategy = StrategyRegistry.register
