@@ -20,6 +20,11 @@ This repository hosts a high-performance trading strategy optimization platform 
 - **Rust (Cargo)**: Required to build `rust_backtester`.
 - **Dependencies**: `polars`, `pyarrow`, `numpy`, `requests`, `toml`
 
+## Data Source
+
+Sample high-frequency trade data (BTCUSDT, ETHUSDT) can be obtained from Kaggle:
+- [Binance Real Time Trades](https://www.kaggle.com/datasets/rossr61938/binance-real-time-trades-btcusdt-ethusdt?select=ETHUSDT.csv)
+
 ## Installation
 
 1. **Clone the repository**:
