@@ -15,12 +15,50 @@ class BaseStrategy(ABC):
     
     def __init__(self, name: str = "Strategy"):
         self.name = name
-        self.params: Dict[str, Any] = {}
+        self.params: Dict[str, Any] = {"fee_rate": 0.0, "slippage": 0.0}
+        self.trade_count = 0
+        self.cash = 100_000.0
+        self.position = 0.0
+        self.initial_value = 100_000.0
         self.equity_history: List[float] = [] # Track equity per batch for analytics
         
     def on_start(self, ctx: Any) -> None:
         """Called before the backtest starts."""
         pass
+        
+    def execute_buy(self, price: float, qty: float) -> bool:
+        """
+        Execute a buy order with fee deduction.
+        Returns True if successful, False if insufficient funds.
+        """
+        fee_rate = self.params.get("fee_rate", 0.0)
+        cost = price * qty
+        fee = cost * fee_rate
+        total_cost = cost + fee
+        
+        if self.cash >= total_cost:
+            self.cash -= total_cost
+            self.position += qty
+            self.trade_count += 1
+            return True
+        return False
+
+    def execute_sell(self, price: float, qty: float) -> bool:
+        """
+        Execute a sell order with fee deduction.
+        Returns True if successful, False if insufficient position.
+        """
+        fee_rate = self.params.get("fee_rate", 0.0)
+        revenue = price * qty
+        fee = revenue * fee_rate
+        net_revenue = revenue - fee
+        
+        if self.position >= qty:
+            self.position -= qty
+            self.cash += net_revenue
+            self.trade_count += 1
+            return True
+        return False
         
     @abstractmethod
     def on_ticks(self, batch: Any, ctx: Any) -> None:

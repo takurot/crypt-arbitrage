@@ -25,3 +25,9 @@ type = "float"
 min = 0.1   # Highly sensitive
 max = 2.0
 distribution = "uniform"
+
+[parameters.fee_rate]
+type = "float"
+min = 0.001
+max = 0.001
+distribution = "uniform"
